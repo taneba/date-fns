@@ -4,6 +4,10 @@ import toInteger from '../_lib/toInteger/index'
 import requiredArgs from '../_lib/requiredArgs/index'
 import isSunday from '../isSunday/index'
 import isSaturday from '../isSaturday/index'
+import isBefore from '../isBefore/index'
+import addDays from '../addDays/index'
+import isAfter from '../isAfter/index'
+import subDays from '../subDays/index'
 
 /**
  * @name addBusinessDays
@@ -25,43 +29,48 @@ import isSaturday from '../isSaturday/index'
  */
 export default function addBusinessDays(
   dirtyDate: Date | number,
-  dirtyAmount: number
+  dirtyAmount: number,
+  businessDays = [1, 2, 3, 4, 5]
 ): Date {
   requiredArgs(2, arguments)
 
   const date = toDate(dirtyDate)
-  const startedOnWeekend = isWeekend(date)
   const amount = toInteger(dirtyAmount)
 
   if (isNaN(amount)) return new Date(NaN)
 
   const hours = date.getHours()
-  const sign = amount < 0 ? -1 : 1
-  const fullWeeks = toInteger(amount / 5)
 
-  date.setDate(date.getDate() + fullWeeks * 7)
+  // const threshold =  amount < 0 ? subDays(date, Math.abs(amount) - 1) : addDays(date, amount - 1)
 
-  // Get remaining days not part of a full week
-  let restDays = Math.abs(amount % 5)
+  const isBeforeOrAfter = (date: Date) =>
+    amount < 0
+      ? isBefore(date, subDays(date, Math.abs(amount) - 1))
+      : isAfter(date, addDays(date, amount - 1))
 
-  // Loops over remaining days
-  while (restDays > 0) {
-    date.setDate(date.getDate() + sign)
-    if (!isWeekend(date)) restDays -= 1
-  }
+  const result = Array.from(Array(Math.abs(amount))).reduce<Date>(
+    (acc, current) => {
+      if (isBeforeOrAfter(acc) && businessDays.includes(acc.getDay())) {
+        return acc
+      }
 
-  // If the date is a weekend day and we reduce a dividable of
-  // 5 from it, we land on a weekend date.
-  // To counter this, we add days accordingly to land on the next business day
-  if (startedOnWeekend && isWeekend(date) && amount !== 0) {
-    // If we're reducing days, we want to add days until we land on a weekday
-    // If we're adding days we want to reduce days until we land on a weekday
-    if (isSaturday(date)) date.setDate(date.getDate() + (sign < 0 ? 2 : -1))
-    if (isSunday(date)) date.setDate(date.getDate() + (sign < 0 ? 1 : -2))
-  }
+      let tmp = amount < 0 ? subDays(acc, 1) : addDays(acc, 1)
+      const calc = () => {
+        if (!businessDays.includes(tmp.getDay())) {
+          tmp = amount < 0 ? subDays(tmp, 1) : addDays(tmp, 1)
+          calc()
+        }
+        return
+      }
+      calc()
+
+      return tmp
+    },
+    date
+  )
 
   // Restore hours to avoid DST lag
-  date.setHours(hours)
+  result.setHours(hours)
 
-  return date
+  return result
 }
